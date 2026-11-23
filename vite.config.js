@@ -6,6 +6,6 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy: { '/api': 'http://127.0.0.1:3001', '/media': 'http://127.0.0.1:3001' },
+    proxy: { '/api': 'http://127.0.0.1:3001', '/media': 'http://127.0.0.1:3001', '/cdn': 'http://127.0.0.1:3001' },
   },
 });

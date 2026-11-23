@@ -7,9 +7,11 @@ import { runCleanup } from './cleanup.js';
 import { httpError } from './errors.js';
 import { createAuthRouter, authenticatedUser } from './auth.js';
 import { editPhoto } from './edits.js';
+import { createCdnCache } from './cdn-cache.js';
 
 export function createApp({ database, storage, production = false, developmentOrigin = 'http://127.0.0.1:5173', secureCookies = false }) {
   const app = express();
+  const cdnCache = createCdnCache();
   app.disable('x-powered-by');
   app.use((req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); next(); });
   app.use('/api', (req, res, next) => {
@@ -65,9 +67,20 @@ export function createApp({ database, storage, production = false, developmentOr
     database.hidePreset(user.id, req.params.presetId);
     res.json({ presetIds: database.hiddenPresets(user.id) });
   });
+  app.delete('/api/presets/:presetId/hidden', (req, res) => {
+    const user = authenticatedUser(database, req);
+    if (!/^preset-[1-5]$/.test(req.params.presetId)) throw httpError(400, 'Preset không hợp lệ.');
+    database.restorePreset(user.id, req.params.presetId);
+    res.json({ presetIds: database.hiddenPresets(user.id) });
+  });
   app.get('/api/photos', (req, res) => {
     const user = authenticatedUser(database, req);
-    res.json({ photos: database.list(user.id) });
+    const page = req.query.page === undefined ? 1 : Number(req.query.page);
+    const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw httpError(400, 'page phải >= 1; limit phải từ 1 đến 100.');
+    }
+    res.json(database.listPage(user.id, page, limit));
   });
   app.get('/api/photos/:id', (req, res) => {
     const user = authenticatedUser(database, req);
@@ -80,6 +93,7 @@ export function createApp({ database, storage, production = false, developmentOr
     const user = authenticatedUser(database, req);
     if (!database.ownedBy(req.params.id, user.id)) throw httpError(404, 'Ảnh không tồn tại trong tài khoản của bạn.');
     if (!database.markDeleting(req.params.id)) throw httpError(404, 'Ảnh không tồn tại.');
+    cdnCache.clearPrefix(req.params.id);
     const result = await runCleanup(database, storage, req.params.id);
     if (result.failed) return res.status(202).json({ message: 'Đã ẩn ảnh. File đang chờ dọn; chạy npm run cleanup để thử lại.' });
     res.status(204).end();
@@ -104,6 +118,66 @@ export function createApp({ database, storage, production = false, developmentOr
   }
   app.get('/media/photos/:id/:version/:filename', serveImage);
   app.get('/media/photos/:id/:filename', serveImage);
+  app.get('/cdn/media/photos/:id/:version/:filename', async (req, res, next) => {
+    try {
+      const user = authenticatedUser(database, req);
+      if (!database.ownedBy(req.params.id, user.id)) throw httpError(404, 'Ảnh không tồn tại trong tài khoản của bạn.');
+      const cacheKey = `${user.id}:${req.originalUrl}`;
+      const hit = cdnCache.get(cacheKey);
+      if (hit) {
+        res.set('X-CDN-Cache', 'HIT');
+        res.set('Cache-Control', 'private, max-age=31536000, immutable');
+        res.type(hit.mime).set('Content-Length', String(hit.body.length)).send(hit.body);
+        return;
+      }
+
+      const match = /^(\d+)\.webp$/.exec(req.params.filename);
+      const version = /^v([1-9]\d*)$/.exec(req.params.version);
+      const variant = match && version
+        ? database.getVariant(req.params.id, Number(match[1]), Number(version[1]))
+        : null;
+      if (!variant) throw httpError(404, 'Variant không tồn tại.');
+      const object = await storage.get(variant.storage_key);
+      const chunks = [];
+      for await (const chunk of object.body) chunks.push(Buffer.from(chunk));
+      const body = Buffer.concat(chunks);
+      cdnCache.set(cacheKey, { body, mime: variant.mime || 'image/webp' });
+      res.set('X-CDN-Cache', 'MISS');
+      res.set('Cache-Control', 'private, max-age=31536000, immutable');
+      res.type(variant.mime || 'image/webp').set('Content-Length', String(body.length)).send(body);
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.get('/cdn/media/photos/:id/:filename', async (req, res, next) => {
+    try {
+      const user = authenticatedUser(database, req);
+      if (!database.ownedBy(req.params.id, user.id)) throw httpError(404, 'Ảnh không tồn tại trong tài khoản của bạn.');
+      if (req.params.filename !== 'original.png') throw httpError(404, 'Variant không tồn tại.');
+
+      const cacheKey = `${user.id}:${req.originalUrl}`;
+      const hit = cdnCache.get(cacheKey);
+      if (hit) {
+        res.set('X-CDN-Cache', 'HIT');
+        res.set('Cache-Control', 'private, max-age=31536000, immutable');
+        res.type(hit.mime).set('Content-Length', String(hit.body.length)).send(hit.body);
+        return;
+      }
+
+      const variant = database.getOriginal(req.params.id);
+      if (!variant) throw httpError(404, 'Variant không tồn tại.');
+      const object = await storage.get(variant.storage_key);
+      const chunks = [];
+      for await (const chunk of object.body) chunks.push(Buffer.from(chunk));
+      const body = Buffer.concat(chunks);
+      cdnCache.set(cacheKey, { body, mime: variant.mime || 'image/png' });
+      res.set('X-CDN-Cache', 'MISS');
+      res.set('Cache-Control', 'private, max-age=31536000, immutable');
+      res.type(variant.mime || 'image/png').set('Content-Length', String(body.length)).send(body);
+    } catch (error) {
+      next(error);
+    }
+  });
   app.use(['/api', '/media'], (req, res) => res.status(404).json({ message: 'Đường dẫn không tồn tại.' }));
   if (production) {
     app.use(express.static(resolve('dist')));

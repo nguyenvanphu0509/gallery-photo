@@ -96,6 +96,9 @@ export default function App() {
   const [viewMode, setViewMode] = useState('stories'); // 'stories' | 'gallery'
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [hiddenPresetIds, setHiddenPresetIds] = useState([]);
+  const [photoPage, setPhotoPage] = useState(1);
+  const [hasMorePhotos, setHasMorePhotos] = useState(false);
+  const [loadingMorePhotos, setLoadingMorePhotos] = useState(false);
 
   // Upload Form State
   const [uploadTitle, setUploadTitle] = useState('');
@@ -128,10 +131,13 @@ export default function App() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  async function refreshPhotos() {
+  async function refreshPhotos(page = 1) {
+    if (page === 1) setLoadingMorePhotos(false);
     try {
-      const { body } = await apiRequest('/api/photos');
-      setPhotos(body.photos || []);
+      const { body } = await apiRequest(`/api/photos?page=${page}&limit=20`);
+      setPhotos(previous => page === 1 ? (body.photos || []) : [...previous, ...(body.photos || [])]);
+      setPhotoPage(body.pagination?.page || page);
+      setHasMorePhotos(Boolean(body.pagination?.hasMore));
     } catch {
       // Backend may be starting
     }
@@ -310,6 +316,16 @@ export default function App() {
     }
   };
 
+  const loadMorePhotos = async () => {
+    if (!hasMorePhotos || loadingMorePhotos) return;
+    setLoadingMorePhotos(true);
+    try {
+      await refreshPhotos(photoPage + 1);
+    } finally {
+      setLoadingMorePhotos(false);
+    }
+  };
+
   // Handle Card Click (toggle horizontal expand in place)
   const handleCardClick = (story, e) => {
     if (dragDistanceRef.current > 8) return;
@@ -432,6 +448,21 @@ export default function App() {
     }
   };
 
+  const restorePresets = async (presetIds = null) => {
+    const ids = presetIds || hiddenPresetIds;
+    try {
+      for (const presetId of ids) {
+        const { body } = await apiRequest(`/api/presets/${encodeURIComponent(presetId)}/hidden`, {
+          method: 'DELETE',
+        });
+        setHiddenPresetIds(body.presetIds || []);
+      }
+      showToast(ids.length ? 'Đã khôi phục thẻ mẫu.' : 'Tất cả thẻ mẫu đang hiển thị.');
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  };
+
   // Delete Photo
   const handleDeletePhoto = async (photoId) => {
     setDeleteConfirm({ type: 'photo', id: photoId });
@@ -519,6 +550,11 @@ export default function App() {
                 <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden aria-label="Chọn ảnh đại diện" onChange={handleAvatarSelected} />
                 <button type="button" className="avatar-upload-button" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading || loggingOut}>{avatarUploading ? 'Đang tải ảnh…' : user.avatarUrl ? 'Đổi ảnh đại diện' : 'Tải ảnh đại diện'}</button>
                 <span className="avatar-upload-hint">JPG, PNG, WebP · tối đa 5 MiB</span>
+                {hiddenPresetIds.length > 0 && (
+                  <button type="button" onClick={() => restorePresets()}>
+                    Khôi phục thẻ mẫu ({hiddenPresetIds.length})
+                  </button>
+                )}
                 <button type="button" onClick={handleLogout} disabled={loggingOut || avatarUploading}>{loggingOut ? 'Đang đăng xuất…' : 'Đăng xuất'}</button>
               </div>
             </details>
@@ -768,6 +804,19 @@ export default function App() {
             <div className="add-story-text">Add Story</div>
             <div className="add-story-sub">1–5 photos · SeaweedFS</div>
           </div>
+          {hasMorePhotos && (
+            <button
+              type="button"
+              className="load-more-stories"
+              disabled={loadingMorePhotos}
+              onClick={(event) => {
+                event.stopPropagation();
+                loadMorePhotos();
+              }}
+            >
+              {loadingMorePhotos ? 'Đang tải…' : 'Tải thêm ảnh'}
+            </button>
+          )}
         </div>
 
         <button

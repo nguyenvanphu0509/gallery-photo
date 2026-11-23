@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { config } from '../server/config.js';
 import { createDatabase } from '../server/database.js';
@@ -48,9 +49,26 @@ try {
   await storage.ensureBucket();
   const fixtures = await fixtureBuffers();
   await start();
+  const register = await fetch(url + '/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Storage Smoke',
+      email: `smoke-${randomUUID()}@example.test`,
+      password: 'StorageSmokePassword123!',
+      confirmPassword: 'StorageSmokePassword123!',
+    }),
+  });
+  assert.equal(register.status, 201);
+  const cookie = register.headers.get('set-cookie')?.split(';', 1)[0];
+  assert.ok(cookie);
+  const smokeFetch = (input, init = {}) => fetch(input, {
+    ...init,
+    headers: { ...init.headers, Cookie: cookie },
+  });
   const body = new FormData(); body.append('title', 'Smoke test'); body.append('alt', 'Ảnh tổng hợp, không có dữ liệu cá nhân');
   for (const name of ['valid.jpg', 'fake.jpg', 'orientation-gps.jpg']) body.append('photos', new Blob([fixtures[name]]), name);
-  const response = await fetch(url + '/api/photos', { method: 'POST', body });
+  const response = await smokeFetch(url + '/api/photos', { method: 'POST', body });
   assert.equal(response.status, 200);
   const { results } = await response.json();
   assert.deepEqual(results.map(r => r.status), ['accepted', 'rejected', 'accepted']);
@@ -59,7 +77,7 @@ try {
   for (const p of photos) {
     assert.equal((await storage.list(`photos/${p.id}/`)).length, p.variants.length + 1);
     for (const v of p.variants) {
-      const media = await fetch(url + v.url);
+      const media = await smokeFetch(url + v.url);
       assert.equal(media.status, 200); assert.equal(media.headers.get('content-type'), 'image/webp');
       assert.equal((await media.arrayBuffer()).byteLength, v.bytes);
     }
@@ -72,14 +90,14 @@ try {
     console.log('PASS: SeaweedFS restarted without removing its volume');
   }
   await start();
-  const gallery = await fetch(url + '/api/photos').then(r => r.json());
+  const gallery = await smokeFetch(url + '/api/photos').then(r => r.json());
   assert.equal(gallery.photos.length, photos.length);
-  for (const p of photos) assert.equal((await fetch(url + p.variants[0].url)).status, 200);
+  for (const p of photos) assert.equal((await smokeFetch(url + p.variants[0].url)).status, 200);
   console.log('PASS: API process restarted; gallery and media persist');
   for (const p of photos) {
-    assert.equal((await fetch(`${url}/api/photos/${p.id}`, { method: 'DELETE' })).status, 204);
+    assert.equal((await smokeFetch(`${url}/api/photos/${p.id}`, { method: 'DELETE' })).status, 204);
     assert.equal((await storage.list(`photos/${p.id}/`)).length, 0);
-    assert.equal((await fetch(url + p.variants[0].url)).status, 404);
+    assert.equal((await smokeFetch(url + p.variants[0].url)).status, 404);
   }
   await stop();
   faultDb = createDatabase(databasePath);

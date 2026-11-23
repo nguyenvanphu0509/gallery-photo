@@ -73,7 +73,7 @@ test('mixed upload: publish only valid files, indexed results, real variants, he
   assert.equal(detail.photo.alt, 'Sóng nhỏ trên bờ biển');
   const media = await fetch(url + photo.variants[0].url);
   assert.equal(media.headers.get('content-type'), 'image/webp');
-  assert.equal(media.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  assert.equal(media.headers.get('cache-control'), 'private, max-age=31536000, immutable');
   const metadata = await sharp(Buffer.from(await media.arrayBuffer())).metadata();
   assert.equal(metadata.width, 320);
   assert.equal(metadata.exif, undefined);
@@ -227,6 +227,70 @@ test('cleanup intents survive restart; active-upload lease prevents premature re
   } finally { database?.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
+test('preset visibility is per user and gallery pagination validates parameters', async t => {
+  const { url, database, storage, user, cookie } = await setup(t);
+  const hidden = await fetch(`${url}/api/presets/preset-1/hidden`, { method: 'PUT', headers: { Cookie: cookie } });
+  assert.equal(hidden.status, 200);
+  assert.deepEqual((await hidden.json()).presetIds, ['preset-1']);
+
+  const registerB = await fetch(`${url}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: 'habitat_session=' },
+    body: JSON.stringify({ name: 'User B', email: 'user-b@example.com', password: '123456789012345', confirmPassword: '123456789012345' }),
+  });
+  const cookieB = registerB.headers.get('set-cookie')?.split(';', 1)[0];
+  const hiddenB = await fetch(`${url}/api/presets/hidden`, { headers: { Cookie: cookieB } }).then(r => r.json());
+  assert.deepEqual(hiddenB.presetIds, []);
+  const meA = await fetch(`${url}/api/auth/me`, { headers: { Cookie: cookie } });
+  assert.equal(meA.status, 200);
+
+  for (let i = 0; i < 21; i++) {
+    database.publish({
+      id: `page-${i}`,
+      title: `Photo ${i}`,
+      alt: 'Test',
+      createdAt: `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`,
+      userId: user.id,
+    }, [], null);
+  }
+  const page1Response = await fetch(`${url}/api/photos?page=1&limit=20`, { headers: { Cookie: cookie } });
+  assert.equal(page1Response.status, 200);
+  const page1 = await page1Response.json();
+  assert.equal(page1.photos.length, 20);
+  assert.equal(page1.pagination.total, 21);
+  assert.equal(page1.pagination.hasMore, true);
+  const page2 = await fetch(`${url}/api/photos?page=2&limit=20`, { headers: { Cookie: cookie } }).then(r => r.json());
+  assert.equal(page2.photos.length, 1);
+  assert.equal(page2.pagination.hasMore, false);
+  assert.equal((await fetch(`${url}/api/photos?page=0&limit=20`, { headers: { Cookie: cookie } })).status, 400);
+
+  const restored = await fetch(`${url}/api/presets/preset-1/hidden`, { method: 'DELETE', headers: { Cookie: cookie } });
+  assert.equal(restored.status, 200);
+  assert.deepEqual((await restored.json()).presetIds, []);
+});
+
+test('CDN cache distinguishes MISS and HIT and blocks cross-user media', async t => {
+  const { url, storage, database, cookie, user } = await setup(t);
+  const response = await send(url, [['cdn.jpg', fixtures['valid.jpg']]]);
+  const body = await response.json();
+  const photo = body.results[0].photo;
+  const miss = await fetch(url + photo.variants[0].url, { headers: { Cookie: cookie } });
+  assert.equal(miss.status, 200);
+  assert.equal(miss.headers.get('x-cdn-cache'), 'MISS');
+  const hit = await fetch(url + photo.variants[0].url, { headers: { Cookie: cookie } });
+  assert.equal(hit.status, 200);
+  assert.equal(hit.headers.get('x-cdn-cache'), 'HIT');
+
+  const registerB = await fetch(`${url}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: 'habitat_session=' },
+    body: JSON.stringify({ name: 'CDN B', email: 'cdn-b@example.com', password: '123456789012345', confirmPassword: '123456789012345' }),
+  });
+  const cookieB = registerB.headers.get('set-cookie')?.split(';', 1)[0];
+  const foreign = await fetch(url + photo.variants[0].url, { headers: { Cookie: cookieB } });
+  assert.equal(foreign.status, 404);
+});
+
 test('Vite dev origin is accepted through the proxy; foreign origins are rejected', async t => {
   const { url } = await setup(t);
   const body = () => form([['x.jpg', fixtures['valid.jpg']]]);
@@ -258,7 +322,7 @@ test('bonus API serves normalized original, publishes versioned edits, restores,
   assert.deepEqual([first.original.width, first.original.height], [800, 1200]);
   const original = await fetch(url + first.original.url);
   assert.equal(original.headers.get('content-type'), 'image/png');
-  assert.equal(original.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  assert.equal(original.headers.get('cache-control'), 'private, max-age=31536000, immutable');
   const meta = await sharp(Buffer.from(await original.arrayBuffer())).metadata();
   assert.equal(meta.width, 800); assert.equal(meta.height, 1200); assert.equal(meta.exif, undefined);
   const edit = await fetch(`${url}/api/photos/${first.id}/edit`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -271,7 +335,7 @@ test('bonus API serves normalized original, publishes versioned edits, restores,
   assert.equal((await fetch(url + first.variants[0].url)).status, 200);
   const newMedia = await fetch(url + second.variants[0].url);
   assert.equal(newMedia.headers.get('content-type'), 'image/webp');
-  assert.equal(newMedia.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  assert.equal(newMedia.headers.get('cache-control'), 'private, max-age=31536000, immutable');
   const restore = await fetch(`${url}/api/photos/${first.id}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedVersion: 2 }) });
   assert.equal(restore.status, 200);
   assert.equal((await restore.json()).photo.currentVersion, 3);

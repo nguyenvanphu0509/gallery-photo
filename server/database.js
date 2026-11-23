@@ -84,9 +84,9 @@ export function createDatabase(filename) {
       id: row.id, title: row.title, alt: row.alt, createdAt: row.created_at, status: row.status,
       userId: row.user_id,
       currentVersion: row.current_version,
-      original: row.original_storage_key ? { width: row.original_width, height: row.original_height, url: `/media/photos/${row.id}/original.png` } : null,
+      original: row.original_storage_key ? { width: row.original_width, height: row.original_height, url: `/cdn/media/photos/${row.id}/original.png` } : null,
       variants: variants.map(v => ({ width: v.width, height: v.height, mime: v.mime, bytes: v.bytes,
-        url: `/media/photos/${row.id}/v${v.version}/${v.width}.webp` })),
+        url: `/cdn/media/photos/${row.id}/v${v.version}/${v.width}.webp` })),
     };
   }
   function publicUser(row) {
@@ -134,6 +134,23 @@ export function createDatabase(filename) {
         : db.prepare("SELECT id FROM Photo WHERE status = 'published' ORDER BY created_at DESC, id DESC").all();
       return rows.map(row => get(row.id));
     },
+    listPage(userId, page = 1, limit = 20) {
+      const safePage = Math.max(1, Number.isSafeInteger(page) ? page : 1);
+      const safeLimit = Math.min(100, Math.max(1, Number.isSafeInteger(limit) ? limit : 20));
+      const offset = (safePage - 1) * safeLimit;
+      const total = db.prepare("SELECT COUNT(*) AS count FROM Photo WHERE status = 'published' AND user_id = ?").get(userId).count;
+      const rows = db.prepare("SELECT id FROM Photo WHERE status = 'published' AND user_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?")
+        .all(userId, safeLimit, offset);
+      return {
+        photos: rows.map(row => get(row.id)),
+        pagination: {
+          page: safePage,
+          limit: safeLimit,
+          total,
+          hasMore: offset + rows.length < total,
+        },
+      };
+    },
     ownedBy(id, userId) {
       return Boolean(db.prepare("SELECT 1 FROM Photo WHERE id = ? AND user_id = ?").get(id, userId));
     },
@@ -142,6 +159,9 @@ export function createDatabase(filename) {
     },
     hidePreset(userId, presetId) {
       db.prepare('INSERT OR IGNORE INTO HiddenPreset (user_id, preset_id) VALUES (?, ?)').run(userId, presetId);
+    },
+    restorePreset(userId, presetId) {
+      db.prepare('DELETE FROM HiddenPreset WHERE user_id = ? AND preset_id = ?').run(userId, presetId);
     },
     get,
     getOriginal(id) {
