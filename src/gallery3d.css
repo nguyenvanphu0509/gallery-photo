@@ -1,0 +1,356 @@
+/* Galeria Privada — Minimal Architecture UI */
+
+.gallery-3d-root {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 999;
+  background: #0e0906;
+  color: #f0e6d6;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.gallery-canvas-container {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+.gallery-canvas-container.grabbing { cursor: grabbing; }
+.gallery-canvas-container.pointer  { cursor: pointer; }
+
+/* ─── Back Button — top-left hairline pill ─── */
+.gal-back-btn {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px 6px 10px;
+  border-radius: 999px;
+  background: rgba(10, 7, 4, 0.52);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 170, 85, 0.18);
+  color: rgba(255, 230, 190, 0.78);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  z-index: 20;
+  transition: border-color 0.22s, color 0.22s, background 0.22s;
+}
+.gal-back-btn svg { opacity: 0.7; }
+.gal-back-btn:hover {
+  border-color: rgba(255, 184, 108, 0.42);
+  color: rgba(255, 240, 210, 0.95);
+  background: rgba(14, 9, 4, 0.68);
+}
+
+/* ─── Compass pill — top-center, invisible background ─── */
+.gal-hud-top {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 16px;
+  border-radius: 999px;
+  background: rgba(8, 5, 2, 0.38);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 170, 85, 0.12);
+  pointer-events: none;
+  z-index: 10;
+  font-size: 9.5px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(255, 220, 170, 0.6);
+}
+.gal-hud-top .gal-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffaa55;
+  box-shadow: 0 0 8px #ff8800;
+  animation: galDotGlow 2.4s infinite ease-in-out;
+  flex-shrink: 0;
+}
+@keyframes galDotGlow {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ─── Brand watermark — bottom-left, text only ─── */
+.gal-hud-brand {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  pointer-events: none;
+  z-index: 10;
+}
+.gal-hud-brand .gal-kr {
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.28em;
+  color: rgba(255, 230, 190, 0.5);
+  margin-bottom: 3px;
+}
+.gal-hud-brand .gal-en {
+  font-size: 9px;
+  letter-spacing: 0.44em;
+  color: rgba(255, 210, 160, 0.3);
+  text-transform: uppercase;
+}
+
+/* ─── Nav bar — bottom-right, ultra-slim ─── */
+.gal-nav-bar {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(8, 5, 2, 0.46);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 170, 85, 0.13);
+  z-index: 10;
+}
+.gal-nav-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 220, 175, 0.52);
+  font-family: inherit;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.gal-nav-btn:hover {
+  color: rgba(255, 240, 210, 0.88);
+  background: rgba(255, 170, 85, 0.1);
+}
+.gal-nav-btn.active {
+  color: rgba(255, 240, 215, 0.95);
+  background: rgba(255, 170, 85, 0.16);
+}
+
+/* Auto-tour pulse dot */
+.gal-autotour-indicator {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 220, 175, 0.3);
+  transition: background 0.3s;
+}
+.gal-autotour-indicator.active {
+  background: #ffaa55;
+  box-shadow: 0 0 7px #ff8800;
+  animation: galTourPulse 1.6s infinite;
+}
+@keyframes galTourPulse {
+  0%   { transform: scale(1);   opacity: 1; }
+  50%  { transform: scale(1.5); opacity: 0.5; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+/* ─── Hover tooltip ─── */
+.gal-hover-tag {
+  position: fixed;
+  pointer-events: none;
+  z-index: 20;
+  padding: 7px 12px;
+  background: rgba(8, 5, 2, 0.78);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 170, 85, 0.18);
+  border-radius: 5px;
+  transform: translate(14px, 14px);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.gal-hover-tag.visible { opacity: 1; }
+.gal-hover-tag .gal-t-title {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: #fff0dc;
+  white-space: nowrap;
+}
+.gal-hover-tag .gal-t-sub {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 190, 120, 0.6);
+  margin-top: 3px;
+}
+
+/* ─── Detail panel — right edge, glassmorphism ─── */
+.gal-detail-panel {
+  position: fixed;
+  top: 50%;
+  right: 24px;
+  transform: translateY(-50%) translateX(24px);
+  width: 340px;
+  max-width: calc(100vw - 40px);
+  padding: 24px 24px 20px;
+  background: rgba(10, 6, 3, 0.80);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 170, 85, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.72);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 30;
+}
+.gal-detail-panel.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0);
+}
+
+.gal-dp-eyebrow {
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #ffaa55;
+  margin-bottom: 7px;
+}
+.gal-dp-title {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.15;
+  color: #fff6ea;
+  margin: 0 0 5px;
+}
+.gal-dp-artist {
+  font-size: 11px;
+  color: rgba(255, 224, 185, 0.6);
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 170, 85, 0.12);
+}
+.gal-dp-preview {
+  margin-bottom: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #080503;
+  border: 1px solid rgba(255, 170, 85, 0.1);
+}
+.gal-dp-preview img {
+  max-height: 160px;
+  width: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gal-dp-desc {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: rgba(248, 230, 210, 0.78);
+  margin-bottom: 16px;
+}
+.gal-dp-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 10.5px;
+  color: rgba(255, 210, 170, 0.5);
+  margin-bottom: 20px;
+}
+.gal-dp-meta span {
+  display: block;
+  color: rgba(255, 230, 200, 0.85);
+  margin-top: 2px;
+  font-size: 11.5px;
+}
+.gal-dp-actions { display: flex; gap: 6px; }
+.gal-dp-btn {
+  flex: 1;
+  padding: 9px 10px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.gal-dp-btn.primary {
+  background: rgba(255, 170, 85, 0.18);
+  border: 1px solid rgba(255, 170, 85, 0.38);
+  color: #fff5e8;
+}
+.gal-dp-btn.primary:hover {
+  background: rgba(255, 170, 85, 0.3);
+  border-color: rgba(255, 170, 85, 0.6);
+}
+.gal-dp-btn.ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 200, 150, 0.16);
+  color: rgba(255, 230, 200, 0.7);
+}
+.gal-dp-btn.ghost:hover {
+  border-color: rgba(255, 200, 150, 0.36);
+  color: #ffffff;
+}
+
+/* ─── Loading overlay ─── */
+.gal-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: #0e0906;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+.gal-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 170, 85, 0.15);
+  border-top-color: #ffaa55;
+  animation: galSpin 0.9s infinite linear;
+}
+@keyframes galSpin {
+  to { transform: rotate(360deg); }
+}
+.gal-loading-text {
+  font-size: 12px;
+  color: rgba(255, 220, 170, 0.6);
+  letter-spacing: 0.12em;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .gal-back-btn { top: 14px; left: 14px; padding: 5px 12px 5px 9px; font-size: 9px; }
+  .gal-hud-top  { top: 14px; font-size: 8.5px; padding: 4px 12px; }
+  .gal-hud-brand { bottom: 72px; left: 16px; }
+  .gal-nav-bar  { right: 50%; transform: translateX(50%); bottom: 14px; }
+  .gal-nav-btn  { padding: 5px 9px; font-size: 9px; }
+  .gal-detail-panel { right: 12px; left: 12px; width: auto; top: auto; bottom: 16px; transform: translateY(20px); }
+  .gal-detail-panel.open { transform: translateY(0); }
+}

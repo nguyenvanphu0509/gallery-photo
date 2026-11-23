@@ -1,0 +1,37 @@
+{
+  "name": "little-moments",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --watch --env-file-if-exists=.env server/index.js",
+    "dev:web": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "start": "node --env-file-if-exists=.env server/index.js --production",
+    "storage:up": "docker compose up -d",
+    "storage:down": "docker compose down",
+    "test": "node --test server/*.test.js",
+    "test:storage": "node --env-file-if-exists=.env scripts/storage-smoke.js",
+    "cleanup": "node --env-file-if-exists=.env scripts/cleanup.js",
+    "storage:list": "node --env-file-if-exists=.env scripts/inspect.js",
+    "fixtures": "node scripts/fixtures.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1000.0",
+    "busboy": "^1.6.0",
+    "express": "^5.1.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-easy-crop": "^6.2.5",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.0",
+    "concurrently": "^9.2.1",
+    "vite": "^7.2.2"
+  }
+}
